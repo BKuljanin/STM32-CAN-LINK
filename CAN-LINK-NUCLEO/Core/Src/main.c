@@ -70,6 +70,8 @@ uint8_t RxData[8];
 // TX mailbox variable
 uint32_t TxMailbox;
 
+int datacheck = 0;
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	// if user button is pressed
@@ -77,6 +79,20 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	{
 		TxData[0] = 100; //100 ms delay
 		TxData[1] = 10; // repeat 10 times
+
+		HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox); // HAL will write CAN_TX_MAILBOX0, CAN_TX_MAILBOX1, or CAN_TX_MAILBOX2 to TxMailbox
+		// When HAL_CAN_AddTxMessage() is called, the HAL automatically picks whichever mailbox is free and tells which one it chose by writing into TxMailbox variable
+
+	}
+}
+
+// Receive data from FIFO0
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData);
+	if (RxHeader.DLC == 2) // if data length is 2 bytes flag will set
+	{
+		datacheck = 1;
 	}
 }
 
@@ -227,6 +243,23 @@ static void MX_CAN1_Init(void)
   }
   /* USER CODE BEGIN CAN1_Init 2 */
 
+  // Configure filters
+  CAN_FilterTypeDef canfilterconfig;
+
+  canfilterconfig.FilterActivation = CAN_FILTER_ENABLE; // Filter activation. Enable or disable filters
+  canfilterconfig.FilterBank = 18;	// Which filter bank we want to use. Anything between 0 and slave start f.b.
+  canfilterconfig.FilterFIFOAssignment = CAN_RX_FIFO0; //using FIFO0 to store messages
+  canfilterconfig.FilterIdHigh = 0x103<<5; // filter identifier (shifting by 5 places because extended ID occupies first 5 bits. Reference manual (bluepill) p685
+  canfilterconfig.FilterIdLow = 0x0000;
+  canfilterconfig.FilterMaskIdHigh = 0x103<<5; // Setting mask ID, see above for shifting. Compares only bits on position where mask is 1. Compares to Filter ID high
+  canfilterconfig.FilterMaskIdLow = 0x0000;
+  canfilterconfig.FilterMode = CAN_FILTERMODE_IDMASK; // Choosing filter mode, LIST or MASK mode
+  canfilterconfig.FilterScale = CAN_FILTERSCALE_32BIT; // ID in mask register will be 32 bit wide
+  canfilterconfig.SlaveStartFilterBank = 20; // how many filters we assign to can1, out of 20 we are using 18 only so far
+
+  HAL_CAN_ConfigFilter(&hcan1, &canfilterconfig); // filter configuration function
+
+
   /* USER CODE END CAN1_Init 2 */
 
 }
@@ -263,6 +296,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
