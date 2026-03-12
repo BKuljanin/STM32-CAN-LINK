@@ -156,7 +156,7 @@ int main(void)
 	  if (datacheck)
 	  {
 		  // blink led
-		  for (int i = 0; i<RxData[1],i++)
+		  for (int i = 0; i<RxData[1];i++)
 		  {
 			  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
 			  HAL_Delay(RxData[0]);
