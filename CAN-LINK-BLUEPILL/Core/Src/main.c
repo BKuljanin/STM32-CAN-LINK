@@ -56,6 +56,31 @@ static void MX_CAN_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+// This is where header transmit data is stored
+CAN_TxHeaderTypeDef TxHeader;
+
+// This is where header of incoming message is stored
+CAN_RxHeaderTypeDef RxHeader;
+
+// Arrays to store TX and RX data
+uint8_t TxData[8];
+uint8_t RxData[8];
+
+// TX mailbox variable
+uint32_t TxMailbox;
+
+int datacheck = 0;
+
+
+// Receive data from FIFO1
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &RxHeader, RxData);
+	if (RxHeader.DLC == 2) // if data length is 2 bytes flag will set
+	{
+		datacheck = 1;
+	}
+}
 
 /* USER CODE END 0 */
 
@@ -91,6 +116,18 @@ int main(void)
   MX_CAN_Init();
   /* USER CODE BEGIN 2 */
 
+  // Start CAN
+  HAL_CAN_Start(&hcan1);
+
+  // Activate notification for data pending in RX FIFO
+  HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO1_MSG_PENDING);
+
+
+  TxHeader.DLC = 2; // Send 2 data bytes
+  TxHeader.IDE = CAN_ID_STD;
+  TxHeader.RTR = CAN_RTR_DATA;
+  TxHeader.StdId = 0x103; // ID of the message
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -100,6 +137,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  if (datacheck)
+	  {
+		  // blink led
+		  for (int i = 0; i<RxData[1],i++)
+		  {
+			  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+			  HAL_Delay(RxData[0]);
+		  }
+		  datacheck = 0;
   }
   /* USER CODE END 3 */
 }
