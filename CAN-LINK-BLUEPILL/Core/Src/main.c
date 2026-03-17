@@ -240,7 +240,7 @@ static void MX_CAN_Init(void)
   canfilterconfig.FilterMaskIdLow = 0x0000;
   canfilterconfig.FilterMode = CAN_FILTERMODE_IDMASK; // Choosing filter mode, LIST or MASK mode
   canfilterconfig.FilterScale = CAN_FILTERSCALE_32BIT; // ID in mask register will be 32 bit wide
-  canfilterconfig.SlaveStartFilterBank = 0; // does not matter since there's only 1 CAN peripheral on bluepill
+  canfilterconfig.SlaveStartFilterBank = 14;
 
   HAL_CAN_ConfigFilter(&hcan, &canfilterconfig); // filter configuration function
   /* USER CODE END CAN_Init 2 */
