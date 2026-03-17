@@ -233,7 +233,7 @@ static void MX_CAN_Init(void)
 
   canfilterconfig.FilterActivation = CAN_FILTER_ENABLE; // Filter activation. Enable or disable filters
   canfilterconfig.FilterBank = 10;	// Which filter bank we want to use. Anything between 0 and 13
-  canfilterconfig.FilterFIFOAssignment = CAN_RX_FIFO1; //using FIFO1 to store messages
+  canfilterconfig.FilterFIFOAssignment = CAN_FILTER_FIFO1; //using FIFO1 to store messages
   canfilterconfig.FilterIdHigh = 0x446<<5; // passing ID sent from nucleo f446re
   canfilterconfig.FilterIdLow = 0x0000;
   canfilterconfig.FilterMaskIdHigh = 0x446<<5;

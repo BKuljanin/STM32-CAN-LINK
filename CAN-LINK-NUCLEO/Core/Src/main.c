@@ -258,7 +258,7 @@ static void MX_CAN1_Init(void)
 
   canfilterconfig.FilterActivation = CAN_FILTER_ENABLE; // Filter activation. Enable or disable filters
   canfilterconfig.FilterBank = 18;	// Which filter bank we want to use. Anything between 0 and slave start f.b.
-  canfilterconfig.FilterFIFOAssignment = CAN_RX_FIFO0; //using FIFO0 to store messages
+  canfilterconfig.FilterFIFOAssignment = CAN_FILTER_FIFO0; //using FIFO0 to store messages
   canfilterconfig.FilterIdHigh = 0x103<<5; // filter identifier (shifting by 5 places because extended ID occupies first 5 bits. Reference manual (bluepill) p685
   canfilterconfig.FilterIdLow = 0x0000;
   canfilterconfig.FilterMaskIdHigh = 0x103<<5; // Setting mask ID, see above for shifting. Compares only bits on position where mask is 1. Compares to Filter ID high
