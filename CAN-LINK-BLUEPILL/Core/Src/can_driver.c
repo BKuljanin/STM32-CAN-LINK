@@ -71,8 +71,8 @@ HAL_StatusTypeDef CAN_SendMotorStatus(CAN_HandleTypeDef *hcan, const CAN_MotorSt
 {
 	uint8_t tx_data[CAN_MOTOR_STATUS_DLC];
 
-	tx_data[0] = (uint8_t)(status->actual_speed >> 8);
-	tx_data[1] = (uint8_t)(status->actual_speed & 0xFF);
+	tx_data[0] = (uint8_t)(status->actual_speed >> 8);		// High byte
+	tx_data[1] = (uint8_t)(status->actual_speed & 0xFF);	// Low byte
 	tx_data[2] = (uint8_t)(status->dc_voltage >> 8);
 	tx_data[3] = (uint8_t)(status->dc_voltage & 0xFF);
 	tx_data[4] = (uint8_t)(status->current >> 8);

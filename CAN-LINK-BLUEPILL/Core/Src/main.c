@@ -40,8 +40,8 @@ int main(void)
 	  if (CAN_HasNewCommand())
 	  {
 		  CAN_MotorCommand_t cmd = CAN_GetLastCommand(); // Collects new command if existing
-		  motor_status.actual_speed = cmd.speed_setpoint;
-		  motor_status.status = cmd.enable;
+		  motor_status.actual_speed = 9000;	// Dummy actual speed, comes from observer
+		  motor_status.status = 0x01; // Dummy status, this is connected to state machine of motor controller
 	  }
 
 	  if (status_send_flag)
