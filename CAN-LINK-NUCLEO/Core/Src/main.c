@@ -4,34 +4,31 @@
 CAN_HandleTypeDef hcan1;
 
 void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+static CAN_MotorCommand_t motor_cmd = {
+	.speed_setpoint = 10000,    // 1000.0 RPM
+	.enable = 1,
+	.direction = MOTOR_DIR_CW
+};
+
+void HAL_SYSTICK_Callback(void)
 {
-	if (GPIO_Pin == GPIO_PIN_13)
-	{
-		CAN_Driver_SendLedCommand(&hcan1, 100, 10);
-	}
+	CAN_SendMotorCommand(&hcan1, &motor_cmd);
 }
 
 int main(void)
 {
   HAL_Init();
   SystemClock_Config();
-  MX_GPIO_Init();
   CAN_Driver_Init(&hcan1);
   CAN_Driver_Start(&hcan1);
 
   while (1)
   {
-	  if (CAN_Driver_HasNewMessage())
+	  if (CAN_HasNewStatus())
 	  {
-		  CAN_LedCommand_t cmd = CAN_Driver_GetLastMessage();
-		  for (int i = 0; i < cmd.blink_count; i++)
-		  {
-			  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-			  HAL_Delay(cmd.delay_ms);
-		  }
+		  CAN_MotorStatus_t status = CAN_GetLastStatus();
+		  (void)status;
 	  }
   }
 }
@@ -74,31 +71,6 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-}
-
-static void MX_GPIO_Init(void)
-{
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOH_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-
-  GPIO_InitStruct.Pin = GPIO_PIN_13;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  GPIO_InitStruct.Pin = GPIO_PIN_5;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 }
 
 void Error_Handler(void)

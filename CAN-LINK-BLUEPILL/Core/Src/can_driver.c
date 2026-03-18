@@ -5,8 +5,8 @@ static CAN_RxHeaderTypeDef rx_header;
 static uint8_t rx_data[8];
 static uint32_t tx_mailbox;
 
-static volatile uint8_t new_message_flag = 0;
-static CAN_LedCommand_t last_command = {0};
+static volatile uint8_t new_command_flag = 0;
+static CAN_MotorCommand_t last_command = {0};
 
 HAL_StatusTypeDef CAN_Driver_Init(CAN_HandleTypeDef *hcan)
 {
@@ -49,7 +49,7 @@ HAL_StatusTypeDef CAN_Driver_Init(CAN_HandleTypeDef *hcan)
 	tx_header.StdId = CAN_TX_STD_ID;
 	tx_header.IDE = CAN_ID_STD;
 	tx_header.RTR = CAN_RTR_DATA;
-	tx_header.DLC = CAN_LED_CMD_LENGTH;
+	tx_header.DLC = CAN_MOTOR_STATUS_DLC;
 
 	return HAL_OK;
 }
@@ -67,24 +67,30 @@ HAL_StatusTypeDef CAN_Driver_Start(CAN_HandleTypeDef *hcan)
 	return HAL_CAN_ActivateNotification(hcan, CAN_RX_IT);
 }
 
-HAL_StatusTypeDef CAN_Driver_SendLedCommand(CAN_HandleTypeDef *hcan, uint8_t delay_ms, uint8_t blink_count)
+HAL_StatusTypeDef CAN_SendMotorStatus(CAN_HandleTypeDef *hcan, const CAN_MotorStatus_t *status)
 {
-	uint8_t tx_data[CAN_LED_CMD_LENGTH];
+	uint8_t tx_data[CAN_MOTOR_STATUS_DLC];
 
-	tx_data[0] = delay_ms;
-	tx_data[1] = blink_count;
+	tx_data[0] = (uint8_t)(status->actual_speed >> 8);
+	tx_data[1] = (uint8_t)(status->actual_speed & 0xFF);
+	tx_data[2] = (uint8_t)(status->dc_voltage >> 8);
+	tx_data[3] = (uint8_t)(status->dc_voltage & 0xFF);
+	tx_data[4] = (uint8_t)(status->current >> 8);
+	tx_data[5] = (uint8_t)(status->current & 0xFF);
+	tx_data[6] = status->status;
+	tx_data[7] = status->error;
 
 	return HAL_CAN_AddTxMessage(hcan, &tx_header, tx_data, &tx_mailbox);
 }
 
-uint8_t CAN_Driver_HasNewMessage(void)
+uint8_t CAN_HasNewCommand(void)
 {
-	return new_message_flag;
+	return new_command_flag;
 }
 
-CAN_LedCommand_t CAN_Driver_GetLastMessage(void)
+CAN_MotorCommand_t CAN_GetLastCommand(void)
 {
-	new_message_flag = 0;
+	new_command_flag = 0;
 	return last_command;
 }
 
@@ -95,10 +101,11 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
 		return;
 	}
 
-	if (rx_header.DLC == CAN_LED_CMD_LENGTH)
+	if (rx_header.DLC == CAN_MOTOR_CMD_DLC)
 	{
-		last_command.delay_ms = rx_data[0];
-		last_command.blink_count = rx_data[1];
-		new_message_flag = 1;
+		last_command.speed_setpoint = ((uint16_t)rx_data[0] << 8) | rx_data[1];
+		last_command.enable = rx_data[2];
+		last_command.direction = rx_data[3];
+		new_command_flag = 1;
 	}
 }

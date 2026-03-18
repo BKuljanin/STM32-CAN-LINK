@@ -5,8 +5,8 @@ static CAN_RxHeaderTypeDef rx_header;
 static uint8_t rx_data[8];
 static uint32_t tx_mailbox;
 
-static volatile uint8_t new_message_flag = 0;
-static CAN_LedCommand_t last_command = {0};
+static volatile uint8_t new_status_flag = 0;
+static CAN_MotorStatus_t last_status = {0};
 
 HAL_StatusTypeDef CAN_Driver_Init(CAN_HandleTypeDef *hcan)
 {
@@ -49,7 +49,7 @@ HAL_StatusTypeDef CAN_Driver_Init(CAN_HandleTypeDef *hcan)
 	tx_header.StdId = CAN_TX_STD_ID;
 	tx_header.IDE = CAN_ID_STD;
 	tx_header.RTR = CAN_RTR_DATA;
-	tx_header.DLC = CAN_LED_CMD_LENGTH;
+	tx_header.DLC = CAN_MOTOR_CMD_DLC;
 
 	return HAL_OK;
 }
@@ -67,25 +67,31 @@ HAL_StatusTypeDef CAN_Driver_Start(CAN_HandleTypeDef *hcan)
 	return HAL_CAN_ActivateNotification(hcan, CAN_RX_IT);
 }
 
-HAL_StatusTypeDef CAN_Driver_SendLedCommand(CAN_HandleTypeDef *hcan, uint8_t delay_ms, uint8_t blink_count)
+HAL_StatusTypeDef CAN_SendMotorCommand(CAN_HandleTypeDef *hcan, const CAN_MotorCommand_t *cmd)
 {
-	uint8_t tx_data[CAN_LED_CMD_LENGTH];
+	uint8_t tx_data[CAN_MOTOR_CMD_DLC];
 
-	tx_data[0] = delay_ms;
-	tx_data[1] = blink_count;
+	tx_data[0] = (uint8_t)(cmd->speed_setpoint >> 8);
+	tx_data[1] = (uint8_t)(cmd->speed_setpoint & 0xFF);
+	tx_data[2] = cmd->enable;
+	tx_data[3] = cmd->direction;
+	tx_data[4] = 0;
+	tx_data[5] = 0;
+	tx_data[6] = 0;
+	tx_data[7] = 0;
 
 	return HAL_CAN_AddTxMessage(hcan, &tx_header, tx_data, &tx_mailbox);
 }
 
-uint8_t CAN_Driver_HasNewMessage(void)
+uint8_t CAN_HasNewStatus(void)
 {
-	return new_message_flag;
+	return new_status_flag;
 }
 
-CAN_LedCommand_t CAN_Driver_GetLastMessage(void)
+CAN_MotorStatus_t CAN_GetLastStatus(void)
 {
-	new_message_flag = 0;
-	return last_command;
+	new_status_flag = 0;
+	return last_status;
 }
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
@@ -95,10 +101,13 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 		return;
 	}
 
-	if (rx_header.DLC == CAN_LED_CMD_LENGTH)
+	if (rx_header.DLC == CAN_MOTOR_STATUS_DLC)
 	{
-		last_command.delay_ms = rx_data[0];
-		last_command.blink_count = rx_data[1];
-		new_message_flag = 1;
+		last_status.actual_speed = ((uint16_t)rx_data[0] << 8) | rx_data[1];
+		last_status.dc_voltage   = ((uint16_t)rx_data[2] << 8) | rx_data[3];
+		last_status.current      = ((uint16_t)rx_data[4] << 8) | rx_data[5];
+		last_status.status       = rx_data[6];
+		last_status.error        = rx_data[7];
+		new_status_flag = 1;
 	}
 }
