@@ -194,7 +194,7 @@ Functions:
 
 - `CAN_HasNewCommand() / CAN_GetLastCommand()`
 
-  Non-blocking interface to check for and retrieve the latest received motor command.
+  Check for and retrieve the latest received motor command.
 
 - `HAL_CAN_RxFifo1MsgPendingCallback()`
 
