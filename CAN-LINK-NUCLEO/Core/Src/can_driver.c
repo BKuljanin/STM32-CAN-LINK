@@ -35,7 +35,7 @@ HAL_StatusTypeDef CAN_Driver_Init(CAN_HandleTypeDef *hcan)
 	filter.FilterFIFOAssignment = CAN_RX_FIFO;
 	filter.FilterIdHigh = CAN_RX_FILTER_ID << 5;
 	filter.FilterIdLow = 0x0000;
-	filter.FilterMaskIdHigh = 0x7FF << 5;
+	filter.FilterMaskIdHigh = 0x7FF << 5;	// All bits must match exactly
 	filter.FilterMaskIdLow = 0x0000;
 	filter.FilterMode = CAN_FILTERMODE_IDMASK;
 	filter.FilterScale = CAN_FILTERSCALE_32BIT;

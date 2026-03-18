@@ -5,12 +5,14 @@ CAN_HandleTypeDef hcan1;
 
 void SystemClock_Config(void);
 
+// Dummy values, replaced in real time code with real commands
 static CAN_MotorCommand_t motor_cmd = {
 	.speed_setpoint = 10000,    // 1000.0 RPM
 	.enable = 1,
 	.direction = MOTOR_DIR_CW
 };
 
+// 1 ms interrupt sending sends motor command CAN message to blupill motor controller
 void HAL_SYSTICK_Callback(void)
 {
 	CAN_SendMotorCommand(&hcan1, &motor_cmd);
@@ -27,12 +29,13 @@ int main(void)
   {
 	  if (CAN_HasNewStatus())
 	  {
-		  CAN_MotorStatus_t status = CAN_GetLastStatus();
+		  CAN_MotorStatus_t status = CAN_GetLastStatus(); // Collecting the feedback message if available
 		  (void)status;
 	  }
   }
 }
 
+// Configuring system clock
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};

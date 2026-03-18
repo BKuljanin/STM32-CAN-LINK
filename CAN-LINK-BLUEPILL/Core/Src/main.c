@@ -5,6 +5,7 @@ CAN_HandleTypeDef hcan;
 
 void SystemClock_Config(void);
 
+// Dummy values, replaced in real time code with real feedback
 static CAN_MotorStatus_t motor_status = {
 	.actual_speed = 0,
 	.dc_voltage   = CAN_VOLTAGE_TO_RAW(24.0f),
@@ -15,6 +16,7 @@ static CAN_MotorStatus_t motor_status = {
 
 static uint8_t status_send_flag = 0;
 
+// Sending feedback on 100Hz
 void HAL_SYSTICK_Callback(void)
 {
 	static uint8_t tick_count = 0;
@@ -37,7 +39,7 @@ int main(void)
   {
 	  if (CAN_HasNewCommand())
 	  {
-		  CAN_MotorCommand_t cmd = CAN_GetLastCommand();
+		  CAN_MotorCommand_t cmd = CAN_GetLastCommand(); // Collects new command if existing
 		  motor_status.actual_speed = cmd.speed_setpoint;
 		  motor_status.status = cmd.enable;
 	  }
