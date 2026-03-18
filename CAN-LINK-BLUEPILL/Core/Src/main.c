@@ -39,9 +39,8 @@ int main(void)
   {
 	  if (CAN_HasNewCommand())
 	  {
-		  CAN_GetLastCommand();
-		  motor_status.actual_speed = 9000;	// Dummy actual speed, comes from observer
-		  motor_status.status = 0x01; // Dummy status, this is connected to state machine of motor controller
+		  CAN_MotorCommand_t cmd = CAN_GetLastCommand();
+		  (void)cmd; // Used by motor control algorithm
 	  }
 
 	  if (status_send_flag)
