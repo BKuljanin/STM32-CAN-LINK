@@ -12,7 +12,7 @@ static CAN_MotorCommand_t motor_cmd = {
 	.direction = MOTOR_DIR_CW
 };
 
-// 1 ms interrupt sending sends motor command CAN message to blupill motor controller
+// 1 ms interrupt sending sends motor command CAN message to bluepill motor controller
 void HAL_SYSTICK_Callback(void)
 {
 	CAN_SendMotorCommand(&hcan1, &motor_cmd);
