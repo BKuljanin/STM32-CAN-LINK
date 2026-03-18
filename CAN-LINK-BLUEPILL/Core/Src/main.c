@@ -5,14 +5,13 @@ CAN_HandleTypeDef hcan;
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_CAN_Init(void);
 
 int main(void)
 {
   HAL_Init();
   SystemClock_Config();
   MX_GPIO_Init();
-  MX_CAN_Init();
+  CAN_Driver_Init(&hcan);
   CAN_Driver_Start(&hcan);
 
   while (1)
@@ -58,28 +57,6 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-}
-
-static void MX_CAN_Init(void)
-{
-  hcan.Instance = CAN1;
-  hcan.Init.Prescaler = 18;
-  hcan.Init.Mode = CAN_MODE_NORMAL;
-  hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan.Init.TimeSeg1 = CAN_BS1_2TQ;
-  hcan.Init.TimeSeg2 = CAN_BS2_1TQ;
-  hcan.Init.TimeTriggeredMode = DISABLE;
-  hcan.Init.AutoBusOff = DISABLE;
-  hcan.Init.AutoWakeUp = DISABLE;
-  hcan.Init.AutoRetransmission = DISABLE;
-  hcan.Init.ReceiveFifoLocked = DISABLE;
-  hcan.Init.TransmitFifoPriority = DISABLE;
-  if (HAL_CAN_Init(&hcan) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  CAN_Driver_Init(&hcan);
 }
 
 static void MX_GPIO_Init(void)

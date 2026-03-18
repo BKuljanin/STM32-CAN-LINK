@@ -10,6 +10,24 @@ static CAN_LedCommand_t last_command = {0};
 
 HAL_StatusTypeDef CAN_Driver_Init(CAN_HandleTypeDef *hcan)
 {
+	hcan->Instance = CAN1;
+	hcan->Init.Prescaler = CAN_PRESCALER;
+	hcan->Init.Mode = CAN_MODE_NORMAL;
+	hcan->Init.SyncJumpWidth = CAN_SYNC_JUMP_WIDTH;
+	hcan->Init.TimeSeg1 = CAN_TIME_SEG1;
+	hcan->Init.TimeSeg2 = CAN_TIME_SEG2;
+	hcan->Init.TimeTriggeredMode = DISABLE;
+	hcan->Init.AutoBusOff = DISABLE;
+	hcan->Init.AutoWakeUp = DISABLE;
+	hcan->Init.AutoRetransmission = DISABLE;
+	hcan->Init.ReceiveFifoLocked = DISABLE;
+	hcan->Init.TransmitFifoPriority = DISABLE;
+
+	if (HAL_CAN_Init(hcan) != HAL_OK)
+	{
+		return HAL_ERROR;
+	}
+
 	CAN_FilterTypeDef filter;
 
 	filter.FilterActivation = CAN_FILTER_ENABLE;

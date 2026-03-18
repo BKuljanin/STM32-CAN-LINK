@@ -7,6 +7,12 @@
 #define CAN_TX_STD_ID          0x103
 #define CAN_RX_FILTER_ID       0x446
 
+/* Bit Timing (APB1 = 36 MHz, Baud = 500 kbps) */
+#define CAN_PRESCALER          18
+#define CAN_TIME_SEG1          CAN_BS1_2TQ
+#define CAN_TIME_SEG2          CAN_BS2_1TQ
+#define CAN_SYNC_JUMP_WIDTH    CAN_SJW_1TQ
+
 /* Filter Configuration */
 #define CAN_FILTER_BANK        10
 #define CAN_SLAVE_START_BANK   14
