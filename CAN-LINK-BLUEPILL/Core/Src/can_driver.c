@@ -12,7 +12,7 @@ HAL_StatusTypeDef CAN_Driver_Init(CAN_HandleTypeDef *hcan)
 {
 	hcan->Instance = CAN1;
 	hcan->Init.Prescaler = CAN_PRESCALER;
-	hcan->Init.Mode = CAN_MODE_NORMAL;
+	hcan->Init.Mode = CAN_MODE_NORMAL; // CAN_MODE_LOOPBACK for debug
 	hcan->Init.SyncJumpWidth = CAN_SYNC_JUMP_WIDTH;
 	hcan->Init.TimeSeg1 = CAN_TIME_SEG1;
 	hcan->Init.TimeSeg2 = CAN_TIME_SEG2;
@@ -94,6 +94,7 @@ CAN_MotorCommand_t CAN_GetLastCommand(void)
 	return last_command;
 }
 
+// FIFO1 interrupt message received
 void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
 	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &rx_header, rx_data) != HAL_OK)
