@@ -1,311 +1,239 @@
-# STM32 IMU Sensor Fusion + SD Card Logging
-### MPU6500 SPI + DMA + Complementary Filter + FATFS (NUCLEO-F446RE)
+# STM32 CAN Bus Motor Control Link
+### NUCLEO-F446RE (Flight Controller) + STM32F103C6 Blue Pill (Motor Controller)
 
-**Note:**  
-This project combines a bare-metal SPI + DMA IMU driver with real-time sensor fusion and SD card data logging.  
-The MPU6500 driver is fully register-level (**SPI1 + DMA2**), while SD logging uses **FATFS over SPI2**.
+**Note:**
+This project implements a two-node CAN bus communication link between an STM32 Nucleo-F446RE acting as a flight controller and an STM32F103C6 Blue Pill acting as a motor controller.
+The flight controller sends motor commands at **1 kHz**, and the motor controller returns status feedback at **100 Hz**.
 
 ---
 
 ## This project demonstrates
 
-- Bare-metal **SPI1** configuration (register-level)
-- Full-duplex SPI burst reads using **DMA** (TX+RX)
-- Data Ready interrupt → start DMA transfer (**event-driven sampling**)
-- DMA Transfer Complete ISR → stop DMA, release CS, parse data
-- IMU initialization + IMU calibration (bias estimation)
-- **Complementary filter** sensor fusion (roll + pitch)
-- **SD card logging** via FATFS over SPI2 (CSV output)
-- Task based scheduling (**no RTOS**)
+- Two-node **CAN bus** communication using **bxCAN** peripheral on STM32
+- Defined CAN message protocol with **signal scaling** and **big-endian byte packing**
+- Periodic transmission from **SysTick** interrupt (1 kHz command, 100 Hz feedback)
+- Hardware acceptance filtering (**ID mask mode**, 32-bit scale)
+- Modular **CAN driver** separated from application logic
+- Interrupt-driven reception via **RX FIFO** callbacks
 
 ---
 
-## Output Signals
+## CAN Protocol
 
-This project produces:
+Two message types are defined on the bus:
 
-- Accelerometer data (X/Y/Z) in **g**
-- Gyroscope data (X/Y/Z) in **deg/s**
-- Temperature in **°C**
-- Estimated attitude:
-  - Roll in **rad** (logged in deg)
-  - Pitch in **rad** (logged in deg)
+### Motor Command (Flight Controller → Motor Controller)
 
-> Yaw is not estimated (no magnetometer).
+| Byte | Signal          | Type     | Scale       | Unit | Range         |
+|-----:|-----------------|----------|-------------|------|---------------|
+| 0-1  | Speed Setpoint  | uint16   | 0.1 RPM/bit | RPM  | 0–6553.5      |
+| 2    | Enable          | uint8    | —           | —    | 0=off, 1=on   |
+| 3    | Direction       | uint8    | —           | —    | 0=CW, 1=CCW   |
+| 4-7  | Reserved        | —        | —           | —    | —             |
+
+- **CAN ID:** 0x446
+- **DLC:** 8
+- **Transmit rate:** 1 kHz (every SysTick)
+
+### Motor Status (Motor Controller → Flight Controller)
+
+| Byte | Signal          | Type     | Scale        | Unit | Range         |
+|-----:|-----------------|----------|--------------|------|---------------|
+| 0-1  | Actual Speed    | uint16   | 0.1 RPM/bit  | RPM  | 0–6553.5      |
+| 2-3  | DC Bus Voltage  | uint16   | 0.01 V/bit   | V    | 0–655.35      |
+| 4-5  | Phase Current   | uint16   | 0.01 A/bit   | A    | 0–655.35      |
+| 6    | Status Flags    | uint8    | —            | —    | —             |
+| 7    | Error Code      | uint8    | —            | —    | —             |
+
+- **CAN ID:** 0x103
+- **DLC:** 8
+- **Transmit rate:** 100 Hz (every 10 ms via SysTick counter)
+
+All multi-byte signals use **big-endian** byte order (MSB first).
 
 ---
 
-## Overview
+## CAN Bus Configuration
 
-The MPU6500 provides a continuous block of sensor output registers starting at **0x3B**:
-
-- ACCEL_XOUT_H .. ACCEL_ZOUT_L (6 bytes)
-- TEMP_OUT_H .. TEMP_OUT_L (2 bytes)
-- GYRO_XOUT_H .. GYRO_ZOUT_L (6 bytes)
-
-In this project **14 bytes** are read in a single burst read starting at **0x3B**.
+| Parameter         | Nucleo (F446RE)     | Blue Pill (F103C6)  |
+|------------------:|---------------------|---------------------|
+| APB1 Clock        | 45 MHz              | 36 MHz              |
+| Prescaler         | 18                  | 18                  |
+| Time Segment 1    | 2 TQ                | 2 TQ                |
+| Time Segment 2    | 2 TQ                | 1 TQ                |
+| Baud Rate         | 500 kbps            | 500 kbps            |
+| TX Pin            | PA12 (AF9)          | PA12 (AF Push-Pull) |
+| RX Pin            | PA11 (AF9)          | PA11 (Input)        |
+| RX FIFO           | FIFO0               | FIFO1               |
+| Filter Bank       | 18                  | 10                  |
+| Filter Mode       | ID Mask, 32-bit     | ID Mask, 32-bit     |
+| Accepted ID       | 0x103               | 0x446               |
+| Filter Mask       | 0x7FF (all 11 bits) | 0x7FF (all 11 bits) |
 
 ---
-
-## Sampling Rate and Timing
-
-- IMU sampling is configured to **~1 kHz** (Data Ready interrupt).
-- Complementary filter update runs whenever a new sample is available (**~1 kHz**).
-- SD logging runs slower (e.g. **50 ms** → 20 Hz) to keep file size reasonable.
 
 ## High-Level Flow
 
-1) IMU acquisition (SPI1 + DMA2, event-driven)
+### Nucleo (Flight Controller)
 
-- MPU6500 INT pin rising edge occurs when new sensor data is ready (Data Ready interrupt).
-- STM32 EXTI interrupt fires (PC13 in this project).
-- In EXTI15_10_IRQHandler():
-    - configure DMA NDTR + buffer addresses
-    - start DMA streams (TX and RX)
-- SPI clocks out:
-    - the read register address (to configure slave internal pointer)
-    - dummy bytes to clock in the remaining sensor bytes (TX)
-- DMA RX Stream Transfer Complete interrupt fires.
-- In DMA2_Stream2_IRQHandler():
-    - clear DMA flags
-    - disable DMA streams
-    - bring CS high to disable slave
-    - parse raw data → apply scaling and bias → update MPU6500_Data_t
+1. System clock configured to **180 MHz** (HSE 8 MHz → PLL)
+2. CAN1 initialized at **500 kbps** with RX filter for ID 0x103
+3. `SysTick_Handler` fires every **1 ms**:
+   - Calls `HAL_SYSTICK_Callback()`
+   - Packs `CAN_MotorCommand_t` into 8 bytes and transmits on CAN bus
+4. Main loop polls for incoming motor status:
+   - `HAL_CAN_RxFifo0MsgPendingCallback()` unpacks received bytes into `CAN_MotorStatus_t`
+   - Application reads status via `CAN_HasNewStatus()` / `CAN_GetLastStatus()`
 
-2) Sensor fusion task
+### Blue Pill (Motor Controller)
 
-- imu_process_task() runs in the main loop (no RTOS).
-- If imu_seq changed → new sample exists:
-    - copy IMU data + attitude state locally
-    - run complementary filter
-    - publish updated attitude
+1. System clock configured to **72 MHz** (HSE 8 MHz → PLL ×9)
+2. CAN1 initialized at **500 kbps** with RX filter for ID 0x446
+3. `HAL_CAN_RxFifo1MsgPendingCallback()` receives motor commands and unpacks into `CAN_MotorCommand_t`
+4. Main loop processes received commands (in production: feeds into motor control algorithm)
+5. `HAL_SYSTICK_Callback()` sets a flag every **10 ms** (100 Hz):
+   - Main loop packs `CAN_MotorStatus_t` into 8 bytes and transmits on CAN bus
 
-3) SD logging task (main loop)
-
-- Every logging_task_timing_ms (e.g. 50 ms):
-    - log one CSV line:
-    - time
-    - accel/gyro/temp
-    - roll/pitch
- 
 ---
 
 ## Hardware Connections
-IMU: MPU6500
 
-| Signal | MPU6500 | STM32 NUCLEO-F446RE |
-|-------:|---------|---------------------|
-| VCC    | VCC     | 3.3V                |
-| GND    | GND     | GND                 |
-| SCLK   | SCL/SCLK| PA5 (SPI1_SCK)      |
-| MOSI   | SDA/SDI | PA7 (SPI1_MOSI)     |
-| MISO   | AD0/SDO | PA6 (SPI1_MISO)     |
-| SS     | NCS     | PA9 (GPIO Output)   |
-| INT    | INT     | PC13 (GPIO Input)   |
+### CAN Transceiver
 
----
+Both nodes use an **SN65HVD230** (or equivalent 3.3V CAN transceiver) to interface with the CAN bus.
 
-MicroSD Card SPI Module (generic 6-pin SPI breakout with onboard 3.3V regulator and level shifting)
-| Signal | SD card module | STM32 NUCLEO-F446RE |
-|-------:|---------|---------------------|
-| VCC    | VCC     | 5V                |
-| GND    | GND     | GND                 |
-| SCLK   | SCL/SCLK| PB10 (SPI2_SCK)      |
-| MOSI   | MOSI | PC1 (SPI2_MOSI)     |
-| MISO   | MISO | PC2 (SPI2_MISO)     |
-| SS     | CS     | PC3 (GPIO Output)   |
+**Nucleo → Transceiver → Bus:**
 
----
+| Signal | STM32 NUCLEO-F446RE | SN65HVD230 | CAN Bus |
+|-------:|---------------------|------------|---------|
+| TX     | PA12                | TXD        | —       |
+| RX     | PA11                | RXD        | —       |
+| VCC    | 3.3V                | VCC        | —       |
+| GND    | GND                 | GND        | —       |
+| CANH   | —                   | CANH       | CANH    |
+| CANL   | —                   | CANL       | CANL    |
 
-## Complementary Filter (Roll + Pitch)
+**Blue Pill → Transceiver → Bus:**
 
-This project uses a **complementary filter** to estimate roll and pitch by combining:
+| Signal | STM32F103C6 Blue Pill | SN65HVD230 | CAN Bus |
+|-------:|-----------------------|------------|---------|
+| TX     | PA12                  | TXD        | —       |
+| RX     | PA11                  | RXD        | —       |
+| VCC    | 3.3V                  | VCC        | —       |
+| GND    | GND                   | GND        | —       |
+| CANH   | —                     | CANH       | CANH    |
+| CANL   | —                     | CANL       | CANL    |
 
-- **Gyroscope integration** (good short-term, but drifts over time due to bias)
-- **Accelerometer tilt estimate** (stable long-term, but noisy under vibration/linear acceleration)
-
-The filter runs whenever a new IMU sample is available.
-
-Note: In this project we use the roll–pitch (X–Y) rotation order, meaning roll is computed first about the body X-axis and pitch second about the body Y-axis, because this ordering matches the standard aircraft convention.
-
-### Accelerometer Tilt Estimation
-
-Roll angle from accelerometer:
-
-$$ ϕ_{acc} = atan2(\frac{a_{y}}{a_{z}}) $$
-
-Pitch angle from accelerometer:
-
-$$\theta_{acc} = atan2\left(\frac{-a_x}{\sqrt{a_y^2 + a_z^2}}\right)$$
-
----
-
-### Gyroscope Integration
-
-The gyroscope measures angular velocity in degrees per second (deg/s).  
-To obtain angle, we integrate over time:
-
-$$ ϕ_{gyro} = ϕ_{prev} +  ω_{x} * dt $$
-
-$$ θ_{gyro} = θ_{prev} +  ω_{y} * dt $$
-
-Where:
-
-- dt is the time step in seconds  
-- angular velocities are in deg/s but they are converted to rad/s before the above calculation
-
----
-
-### Complementary Filter Fusion
-
-The complementary filter combines gyro and accelerometer estimates:
-
-$$ ϕ = α * ϕ_{gyro}+ (1-α) ϕ_{acc} $$
-
-$$ θ = α * θ_{gyro}+ (1-α) θ_{acc} $$
-
-Where α is in range 0.95~0.98. This project uses α=0.98.
-
-- High α → trust gyroscope more  
-  - Better response to fast motion  
-  - More long-term drift  
-
-- Low α → trust accelerometer more  
-  - Better long-term stability  
-  - More noise during motion  
-
----
-
-### Data Units and Conventions
-
-- Accelerometer `a_x, a_y, a_z` are in **g**
-- Gyroscope `omega_x, omega_y, omega_z` are in **deg/s**
-- Internal attitude state (`roll`, `pitch`) is stored in **radians**
-- Logged attitude is converted to **degrees**
+**Bus termination:** 120Ω resistor between CANH and CANL at each end of the bus.
 
 ---
 
 ## File Structure
 
-### `main.c`
+### Nucleo (CAN-LINK-NUCLEO)
 
-- GPIO initialization
-- SPI1 in DMA mode initialization for IMU reading
-- SPI2 in DMA mode for SD card writing
-- Initialization of log file on SD card
-- USART2 initialization for debugging
-- MPU6500 initialization
-- IMU calibration
-- EXTI configuration for Data Ready
-- Interrupts used:
-  
-    -EXTI15_10_IRQHandler() → Data Ready triggers a DMA read
-  
-    -DMA2_Stream2_IRQHandler() → RX DMA transfer complete
-  
-- Calls sensor fusion task
-- Calls SD card logging task
+#### `main.c`
 
----
+- System clock configuration (180 MHz)
+- CAN driver initialization and start
+- `HAL_SYSTICK_Callback()` sends motor command every 1 ms
+- Main loop reads motor status feedback
 
-### `mpu6500.h / mpu6500.c (Core->Inc/Src)`
-Initializes MPU6500 IMU sensor, reads it, and writes to it using **SPI** in **DMA** mode.
+#### `can_driver.h / can_driver.c (Core→Inc/Src)`
+
+CAN peripheral driver for the flight controller node.
 
 Functions:
-- `mpu6500_init();`
-  
-  Initializes the sensor by waking it up and configuring the measurement range for gyroscope and accelerometer. Configures LP filter and 1kHz frequency and enables Data Ready Interrupt pin.
-  
-- `mpu6500_read(...);`
+- `CAN_Driver_Init()`
 
-  Starts a full-duplex SPI DMA burst read (TX dummy bytes + RX buffer fill).
+  Initializes CAN1 peripheral (500 kbps, normal mode), configures 32-bit ID mask filter for ID 0x103 on FIFO0, and sets up TX header for motor command messages.
 
-- `mpu6500_write(...);`
+- `CAN_Driver_Start()`
 
-  Starts a full-duplex SPI DMA burst write (RX dummy bytes + TX buffer fill).
+  Starts CAN peripheral and activates RX FIFO0 message pending interrupt notification.
 
-- `mpu6500_read_blocking() / mpu6500_write_blocking();`
+- `CAN_SendMotorCommand()`
 
-   SPI blocking read and write, used only for IMU initialization and calibration. In real-time only DMA SPI is used for data collection.
+  Packs `CAN_MotorCommand_t` struct into 8 bytes (big-endian) and queues for transmission.
 
-- `mpu6500_calibrate_imu(...);`
+- `CAN_HasNewStatus() / CAN_GetLastStatus()`
 
-  Reading gyroscope and acclerometer info for given number of samples and finds average. The sensor is still while this is in progress. This value is used in processing in mpu6500_process, bias is subtracted.
+  Non-blocking interface to check for and retrieve the latest received motor status message.
 
-- `dma_callback(...);`
+- `HAL_CAN_RxFifo0MsgPendingCallback()`
 
-  Handles disabling SPI slave and DMA transfer on DMA completed interrupt. Calls processing function.
+  ISR callback that unpacks received CAN frame into `CAN_MotorStatus_t`.
 
----
+#### `stm32f4xx_it.c`
 
-### `spi.h / spi.c (Core->Inc/Src)`
-Configures **SPI** peripheral in **DMA** mode.
-
-- `dma2_stream_2_3_init();`
-
-  Initializing DMA2 Stream 2 Channel 3 for SPI_RX. Initializing DMA2 Stream 3 Channel 3 for SPI_TX.
-
-- `dma2_enable()/dma2_disable;`
-
-  Enable and disable DMA2 helper functions.
-
-- `set_dma_transfer_length()/set_dma_source();`
- 
-  Sets DMA transfer length and DMA memory sources for transmit and receive.
-
-- `spi_gpio_init();`
- 
-  Initializes GPIO pins for SPI protocol.
-
-- `spi1_config();`
- 
-  Initializes SPI1 peripheral.
-
-- `cs_enable()/cs_disable();`
- 
-  Pulling CS line low to select the slave, pulls high to disable the slave.
-
-- `dma2_clear_spi1_flags;`
- 
-  Clear all pending interrupt flags (TC, HT, TE, DME, FE) for DMA2 Stream2 and Stream3.
+- `SysTick_Handler` calls `HAL_IncTick()` and `HAL_SYSTICK_Callback()`
+- `CAN1_RX0_IRQHandler` routes to HAL CAN interrupt handler
 
 ---
 
-### `exti.h / exti.c (Core->Inc/Src)`
+### Blue Pill (CAN-LINK-BLUEPILL)
 
- - `pc13_exti_init();`
- 
-  Initializes PC13 as input. Enabling rising edge interrupt. Using it for Data Ready Interrupt.
- 
+#### `main.c`
+
+- System clock configuration (72 MHz)
+- CAN driver initialization and start
+- `HAL_SYSTICK_Callback()` sets send flag every 10 ms (100 Hz)
+- Main loop processes commands and sends motor status
+
+#### `can_driver.h / can_driver.c (Core→Inc/Src)`
+
+CAN peripheral driver for the motor controller node.
+
+Functions:
+- `CAN_Driver_Init()`
+
+  Initializes CAN1 peripheral (500 kbps, normal mode), configures 32-bit ID mask filter for ID 0x446 on FIFO1, and sets up TX header for motor status messages.
+
+- `CAN_Driver_Start()`
+
+  Starts CAN peripheral and activates RX FIFO1 message pending interrupt notification.
+
+- `CAN_SendMotorStatus()`
+
+  Packs `CAN_MotorStatus_t` struct into 8 bytes (big-endian) and queues for transmission.
+
+- `CAN_HasNewCommand() / CAN_GetLastCommand()`
+
+  Non-blocking interface to check for and retrieve the latest received motor command.
+
+- `HAL_CAN_RxFifo1MsgPendingCallback()`
+
+  ISR callback that unpacks received CAN frame into `CAN_MotorCommand_t`.
+
+#### `stm32f1xx_it.c`
+
+- `SysTick_Handler` calls `HAL_IncTick()` and `HAL_SYSTICK_Callback()`
+- `CAN1_RX1_IRQHandler` routes to HAL CAN interrupt handler
+
 ---
 
-### `complementary_filter.h / complementary_filter.c (Core->Inc/Src)`
+## Signal Scaling Reference
 
- - `imu_process_task();`
- 
-  Creates local copy of last sample, checks if there is new data and calls complementary filter (see above for details).
- 
----
+Conversion macros are provided in `can_driver.h` for both boards:
 
-## SD Card Logging Module (`logger.c / logger.h (Core->Inc/Src)`)
+```c
+// Physical to raw (for transmission)
+CAN_SPEED_TO_RAW(1000.0f)   // 1000 RPM   → 10000 raw
+CAN_VOLTAGE_TO_RAW(24.0f)   // 24.00 V    → 2400 raw
+CAN_CURRENT_TO_RAW(1.5f)    // 1.50 A     → 150 raw
 
-This module implements a logging interface built on top of **FATFS**.  
-It provides:
-
-- File creation
-- Buffered writes
-- Safe closing with synchronization
-- Structured CSV logging of IMU + attitude data
+// Raw to physical (after reception)
+CAN_RAW_TO_SPEED(10000)     // 10000 raw  → 1000.0 RPM
+CAN_RAW_TO_VOLTAGE(2400)    // 2400 raw   → 24.00 V
+CAN_RAW_TO_CURRENT(150)     // 150 raw    → 1.50 A
+```
 
 ---
 
 ## Reference Materials
-All register settings, timer configurations, and GPIO modes in this code are implemented based on:
 
-- **Reference Manual:** RM0390 Rev 7  
-- **Datasheet:** DS10693 Rev 10  
-- **User Manual:** UM1724 Rev 17
-- **Cortex M4 Generic User Guide:** DUI 0553A
-
-  
-* **Sensor Documentation:** MPU-6500 Register Map and Descriptions Revision 2.1
+- **Reference Manual (Nucleo):** RM0390 Rev 7
+- **Reference Manual (Blue Pill):** RM0008 Rev 21
+- **Datasheet (F446RE):** DS10693 Rev 10
+- **Datasheet (F103C6):** DS5791 Rev 18
+- **SN65HVD230 Datasheet:** SLLS560 (Texas Instruments)
