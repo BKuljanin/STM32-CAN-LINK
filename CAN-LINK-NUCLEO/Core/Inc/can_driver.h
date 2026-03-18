@@ -3,25 +3,26 @@
 
 #include "main.h"
 
-/* CAN Node Identifiers */
+// CAN Node IDs
 #define CAN_TX_STD_ID          0x446
 #define CAN_RX_FILTER_ID       0x103
 
-/* Bit Timing (APB1 = 45 MHz, Baud = 500 kbps) */
+// APB1 = 45 MHz, Baud = 500 kbps
 #define CAN_PRESCALER          18
 #define CAN_TIME_SEG1          CAN_BS1_2TQ
 #define CAN_TIME_SEG2          CAN_BS2_2TQ
 #define CAN_SYNC_JUMP_WIDTH    CAN_SJW_1TQ
 
-/* Filter Configuration */
+// Filter configuration
 #define CAN_FILTER_BANK        18
 #define CAN_SLAVE_START_BANK   20
 #define CAN_RX_FIFO            CAN_FILTER_FIFO0
 #define CAN_RX_IT              CAN_IT_RX_FIFO0_MSG_PENDING
 
-/* LED Command Payload */
+// LED temp
 #define CAN_LED_CMD_LENGTH     2
 
+// temp removing soon
 typedef struct {
 	uint8_t delay_ms;
 	uint8_t blink_count;
