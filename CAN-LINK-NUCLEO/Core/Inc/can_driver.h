@@ -1,0 +1,30 @@
+#ifndef CAN_DRIVER_H
+#define CAN_DRIVER_H
+
+#include "main.h"
+
+/* CAN Node Identifiers */
+#define CAN_TX_STD_ID          0x446
+#define CAN_RX_FILTER_ID       0x103
+
+/* Filter Configuration */
+#define CAN_FILTER_BANK        18
+#define CAN_SLAVE_START_BANK   20
+#define CAN_RX_FIFO            CAN_FILTER_FIFO0
+#define CAN_RX_IT              CAN_IT_RX_FIFO0_MSG_PENDING
+
+/* LED Command Payload */
+#define CAN_LED_CMD_LENGTH     2
+
+typedef struct {
+	uint8_t delay_ms;
+	uint8_t blink_count;
+} CAN_LedCommand_t;
+
+HAL_StatusTypeDef CAN_Driver_Init(CAN_HandleTypeDef *hcan);
+HAL_StatusTypeDef CAN_Driver_Start(CAN_HandleTypeDef *hcan);
+HAL_StatusTypeDef CAN_Driver_SendLedCommand(CAN_HandleTypeDef *hcan, uint8_t delay_ms, uint8_t blink_count);
+uint8_t CAN_Driver_HasNewMessage(void);
+CAN_LedCommand_t CAN_Driver_GetLastMessage(void);
+
+#endif /* CAN_DRIVER_H */

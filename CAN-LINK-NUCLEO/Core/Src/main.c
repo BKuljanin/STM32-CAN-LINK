@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "can_driver.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -57,42 +57,11 @@ static void MX_CAN1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-// This is where header transmit data is stored
-CAN_TxHeaderTypeDef TxHeader;
-
-// This is where header of incoming message is stored
-CAN_RxHeaderTypeDef RxHeader;
-
-// Arrays to store TX and RX data
-uint8_t TxData[8];
-uint8_t RxData[8];
-
-// TX mailbox variable
-uint32_t TxMailbox;
-
-int datacheck = 0;
-
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-	// if user button is pressed
 	if (GPIO_Pin == GPIO_PIN_13)
 	{
-		TxData[0] = 100; //100 ms delay
-		TxData[1] = 10; // repeat 10 times
-
-		HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox); // HAL will write CAN_TX_MAILBOX0, CAN_TX_MAILBOX1, or CAN_TX_MAILBOX2 to TxMailbox
-		// When HAL_CAN_AddTxMessage() is called, the HAL automatically picks whichever mailbox is free and tells which one it chose by writing into TxMailbox variable
-
-	}
-}
-
-// Receive data from FIFO0
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
-{
-	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData);
-	if (RxHeader.DLC == 2) // if data length is 2 bytes flag will set
-	{
-		datacheck = 1;
+		CAN_Driver_SendLedCommand(&hcan1, 100, 10);
 	}
 }
 
@@ -130,19 +99,7 @@ int main(void)
   MX_CAN1_Init();
   /* USER CODE BEGIN 2 */
 
-  // Start CAN
-  HAL_CAN_Start(&hcan1);
-
-  // Activate notification for data pending in RX FIFO
-  HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
-
-
-  TxHeader.DLC = 2; // Send 2 data bytes
-  TxHeader.IDE = CAN_ID_STD;
-  TxHeader.RTR = CAN_RTR_DATA;
-  TxHeader.StdId = 0x446; // ID of the message
-
-  // Send 2 data bytes. 1st is delay for LED on second board. 2nd is number of times LED will blink. Data is sent in callback function
+  CAN_Driver_Start(&hcan1);
 
   /* USER CODE END 2 */
 
@@ -153,15 +110,14 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  if (datacheck)
+	  if (CAN_Driver_HasNewMessage())
 	  {
-		  // blink led
-		  for (int i = 0; i<RxData[1];i++)
+		  CAN_LedCommand_t cmd = CAN_Driver_GetLastMessage();
+		  for (int i = 0; i < cmd.blink_count; i++)
 		  {
 			  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-			  HAL_Delay(RxData[0]);
+			  HAL_Delay(cmd.delay_ms);
 		  }
-		  datacheck = 0;
 	  }
   }
   /* USER CODE END 3 */
@@ -253,22 +209,7 @@ static void MX_CAN1_Init(void)
   }
   /* USER CODE BEGIN CAN1_Init 2 */
 
-  // Configure filters
-  CAN_FilterTypeDef canfilterconfig;
-
-  canfilterconfig.FilterActivation = CAN_FILTER_ENABLE; // Filter activation. Enable or disable filters
-  canfilterconfig.FilterBank = 18;	// Which filter bank we want to use. Anything between 0 and slave start f.b.
-  canfilterconfig.FilterFIFOAssignment = CAN_FILTER_FIFO0; //using FIFO0 to store messages
-  canfilterconfig.FilterIdHigh = 0x103<<5; // filter identifier (shifting by 5 places because extended ID occupies first 5 bits. Reference manual (bluepill) p685
-  canfilterconfig.FilterIdLow = 0x0000;
-  canfilterconfig.FilterMaskIdHigh = 0x103<<5; // Setting mask ID, see above for shifting. Compares only bits on position where mask is 1. Compares to Filter ID high
-  canfilterconfig.FilterMaskIdLow = 0x0000;
-  canfilterconfig.FilterMode = CAN_FILTERMODE_IDMASK; // Choosing filter mode, LIST or MASK mode
-  canfilterconfig.FilterScale = CAN_FILTERSCALE_32BIT; // ID in mask register will be 32 bit wide
-  canfilterconfig.SlaveStartFilterBank = 20; // how many filters we assign to can1, out of 20 we are using 18 only so far
-
-  HAL_CAN_ConfigFilter(&hcan1, &canfilterconfig); // filter configuration function
-
+  CAN_Driver_Init(&hcan1);
 
   /* USER CODE END CAN1_Init 2 */
 

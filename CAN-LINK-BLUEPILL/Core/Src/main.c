@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "can_driver.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -56,31 +56,6 @@ static void MX_CAN_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-// This is where header transmit data is stored
-CAN_TxHeaderTypeDef TxHeader;
-
-// This is where header of incoming message is stored
-CAN_RxHeaderTypeDef RxHeader;
-
-// Arrays to store TX and RX data
-uint8_t TxData[8];
-uint8_t RxData[8];
-
-// TX mailbox variable
-uint32_t TxMailbox;
-
-int datacheck = 0;
-
-
-// Receive data from FIFO1
-void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
-{
-	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &RxHeader, RxData);
-	if (RxHeader.DLC == 2) // if data length is 2 bytes flag will set
-	{
-		datacheck = 1;
-	}
-}
 
 /* USER CODE END 0 */
 
@@ -116,20 +91,7 @@ int main(void)
   MX_CAN_Init();
   /* USER CODE BEGIN 2 */
 
-  // Start CAN
-  HAL_CAN_Start(&hcan);
-
-  // Activate notification for data pending in RX FIFO
-  HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO1_MSG_PENDING);
-
-
-  TxHeader.DLC = 2; // Send 2 data bytes
-  TxHeader.IDE = CAN_ID_STD;
-  TxHeader.RTR = CAN_RTR_DATA;
-  TxHeader.StdId = 0x103; // ID of the message
-
-  TxData[0] = 50; // ms delay
-  TxData[1] = 20; // loop rep
+  CAN_Driver_Start(&hcan);
 
   /* USER CODE END 2 */
 
@@ -140,18 +102,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  if (datacheck)
+	  if (CAN_Driver_HasNewMessage())
 	  {
-		  // blink led
-		  for (int i = 0; i<RxData[1];i++)
+		  CAN_LedCommand_t cmd = CAN_Driver_GetLastMessage();
+		  for (int i = 0; i < cmd.blink_count; i++)
 		  {
-			  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); // pc 13 LED
-			  HAL_Delay(RxData[0]);
+			  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+			  HAL_Delay(cmd.delay_ms);
 		  }
-		  datacheck = 0;
-
-		  // send data
-		  HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox);
+		  CAN_Driver_SendLedCommand(&hcan, 50, 20);
 	  }
   }
   /* USER CODE END 3 */
@@ -228,21 +187,9 @@ static void MX_CAN_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN CAN_Init 2 */
-  // Configure filters
-  CAN_FilterTypeDef canfilterconfig;
 
-  canfilterconfig.FilterActivation = CAN_FILTER_ENABLE; // Filter activation. Enable or disable filters
-  canfilterconfig.FilterBank = 10;	// Which filter bank we want to use. Anything between 0 and 13
-  canfilterconfig.FilterFIFOAssignment = CAN_FILTER_FIFO1; //using FIFO1 to store messages
-  canfilterconfig.FilterIdHigh = 0x446<<5; // passing ID sent from nucleo f446re
-  canfilterconfig.FilterIdLow = 0x0000;
-  canfilterconfig.FilterMaskIdHigh = 0x446<<5;
-  canfilterconfig.FilterMaskIdLow = 0x0000;
-  canfilterconfig.FilterMode = CAN_FILTERMODE_IDMASK; // Choosing filter mode, LIST or MASK mode
-  canfilterconfig.FilterScale = CAN_FILTERSCALE_32BIT; // ID in mask register will be 32 bit wide
-  canfilterconfig.SlaveStartFilterBank = 14;
+  CAN_Driver_Init(&hcan);
 
-  HAL_CAN_ConfigFilter(&hcan, &canfilterconfig); // filter configuration function
   /* USER CODE END CAN_Init 2 */
 
 }
