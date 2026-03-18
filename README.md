@@ -2,18 +2,17 @@
 ### NUCLEO-F446RE (Flight Controller) + STM32F103C6 Blue Pill (Motor Controller)
 
 **Note:**
-This project implements a two-node CAN bus communication link between an STM32 Nucleo-F446RE acting as a flight controller and an STM32F103C6 Blue Pill acting as a motor controller.
+This project implements a two node CAN bus communication link between STM32 Nucleo-F446RE acting as a flight controller and STM32F103C6 (Bluepill) acting as a motor controller.
 The flight controller sends motor commands at **1 kHz**, and the motor controller returns status feedback at **100 Hz**.
 
 ---
 
 ## This project demonstrates
 
-- Two-node **CAN bus** communication using **bxCAN** peripheral on STM32
-- Defined CAN message protocol with **signal scaling** and **big-endian byte packing**
+- Two node **CAN bus** communication using **bxCAN** peripheral on STM32
+- Defined CAN message protocol
 - Periodic transmission from **SysTick** interrupt (1 kHz command, 100 Hz feedback)
-- Hardware acceptance filtering (**ID mask mode**, 32-bit scale)
-- Modular **CAN driver** separated from application logic
+- Hardware acceptance filtering (**ID mask mode**)
 - Interrupt-driven reception via **RX FIFO** callbacks
 
 ---
@@ -32,8 +31,8 @@ Two message types are defined on the bus:
 | 4-7  | Reserved        | —        | —           | —    | —             |
 
 - **CAN ID:** 0x446
-- **DLC:** 8
-- **Transmit rate:** 1 kHz (every SysTick)
+- **DLC:** 8 (number of bytes in a message)
+- **Transmit rate:** 1 kHz (every SysTick). This is done for testing, in a real application motor command will be sent as soon as flight controller calculates new motor speed setpoint.
 
 ### Motor Status (Motor Controller → Flight Controller)
 
@@ -46,10 +45,10 @@ Two message types are defined on the bus:
 | 7    | Error Code      | uint8    | —            | —    | —             |
 
 - **CAN ID:** 0x103
-- **DLC:** 8
+- **DLC:** 8 (number of bytes in a message)
 - **Transmit rate:** 100 Hz (every 10 ms via SysTick counter)
 
-All multi-byte signals use **big-endian** byte order (MSB first).
+All multi-byte signals use **big endian** byte order (MSB first).
 
 ---
 
@@ -62,7 +61,7 @@ All multi-byte signals use **big-endian** byte order (MSB first).
 | Time Segment 1    | 2 TQ                | 2 TQ                |
 | Time Segment 2    | 2 TQ                | 1 TQ                |
 | Baud Rate         | 500 kbps            | 500 kbps            |
-| TX Pin            | PA12 (AF9)          | PA12 (AF Push-Pull) |
+| TX Pin            | PA12 (AF9)          | PA12 (AF Push-pull) |
 | RX Pin            | PA11 (AF9)          | PA11 (Input)        |
 | RX FIFO           | FIFO0               | FIFO1               |
 | Filter Bank       | 18                  | 10                  |
@@ -80,7 +79,7 @@ All multi-byte signals use **big-endian** byte order (MSB first).
 2. CAN1 initialized at **500 kbps** with RX filter for ID 0x103
 3. `SysTick_Handler` fires every **1 ms**:
    - Calls `HAL_SYSTICK_Callback()`
-   - Packs `CAN_MotorCommand_t` into 8 bytes and transmits on CAN bus
+   - Packs `CAN_MotorCommand_t` into 8 bytes and transmits on CAN bus. In practice this will be sent when flight controller calculates new speed setpoint.
 4. Main loop polls for incoming motor status:
    - `HAL_CAN_RxFifo0MsgPendingCallback()` unpacks received bytes into `CAN_MotorStatus_t`
    - Application reads status via `CAN_HasNewStatus()` / `CAN_GetLastStatus()`
@@ -100,7 +99,7 @@ All multi-byte signals use **big-endian** byte order (MSB first).
 
 ### CAN Transceiver
 
-Both nodes use an **SN65HVD230** (or equivalent 3.3V CAN transceiver) to interface with the CAN bus.
+Both nodes use an **SN65HVD230** (or equivalent 3.3V CAN transceiver) to interface with the CAN bus. 120 Ω termination resistor is required if it is not already mounted on CAN transceiver module.
 
 **Nucleo → Transceiver → Bus:**
 
@@ -164,10 +163,6 @@ Functions:
 
   ISR callback that unpacks received CAN frame into `CAN_MotorStatus_t`.
 
-#### `stm32f4xx_it.c`
-
-- `SysTick_Handler` calls `HAL_IncTick()` and `HAL_SYSTICK_Callback()`
-- `CAN1_RX0_IRQHandler` routes to HAL CAN interrupt handler
 
 ---
 
@@ -205,10 +200,6 @@ Functions:
 
   ISR callback that unpacks received CAN frame into `CAN_MotorCommand_t`.
 
-#### `stm32f1xx_it.c`
-
-- `SysTick_Handler` calls `HAL_IncTick()` and `HAL_SYSTICK_Callback()`
-- `CAN1_RX1_IRQHandler` routes to HAL CAN interrupt handler
 
 ---
 
