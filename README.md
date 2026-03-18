@@ -157,7 +157,7 @@ Functions:
 
 - `CAN_HasNewStatus() / CAN_GetLastStatus()`
 
-  Non-blocking interface to check for and retrieve the latest received motor status message.
+  Check for and retrieve the latest received motor status message.
 
 - `HAL_CAN_RxFifo0MsgPendingCallback()`
 
@@ -190,7 +190,7 @@ Functions:
 
 - `CAN_SendMotorStatus()`
 
-  Packs `CAN_MotorStatus_t` struct into 8 bytes (big-endian) and queues for transmission.
+  Packs `CAN_MotorStatus_t` structure into 8 bytes (big-endian) and queues for transmission.
 
 - `CAN_HasNewCommand() / CAN_GetLastCommand()`
 
